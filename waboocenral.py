@@ -40,7 +40,7 @@ import bz2
 from BeautifulSoup import BeautifulSoup
 from subprocess import Popen
 from getpass import getpass
-from ast import literal_eval
+from ast import literal_eval as leval
 from PyQt4.QtGui import *
 from PyQt4.QtCore import *
 
@@ -56,23 +56,12 @@ debug = False
 run = False
 application = None
 app = None
-leval = literal_eval
-DThread = SThread = HThread = None
+DThread = None
 path = os.path.join(os.path.expanduser("~"), "python-downloads")
-configpath = os.path.join(os.path.expanduser("~"), ".waboocenral")
-types = ['danbooru', 'pixiv', 'gelbooru', 'safebooru', 'konachan',
-         'oreno.imouto', 'sankakucomplex']
-help = """usage: %s [option] ... [arg] ...
-Options and arguments:
--n		No GUI.
--h		Display the help page.
--u user		Login username.
--p pwd		Login password.
--b board		Imageboard to download from.
--t tags		Tagged images to download.
--P pages		How many pages to download.
+types = ["danbooru", "pixiv", "gelbooru", "safebooru", "konachan",
+         "oreno.imouto", "sankakucomplex"]
 
-Input:
+help = """Input:
 Tags: Type up to however many tags the image host supports; \
 for example basic Danbooru searches only allow two tags.
 Example: touhou red
@@ -88,8 +77,17 @@ Works even if there are less than 999 pages, so large numbers can be used \
 if the user wishes to download all pages.
 
 Example 2: 7:17
-Will download page 7 up until and including page 17.""" \
-%(sys.argv[0], ', '.join(types))
+Will download page 7 up until and including page 17.""" % ', '.join(types)
+
+usage = """usage: %s [option] ... [arg] ...
+Options and arguments:
+-n		No GUI.
+-h		Display the help page.
+-u user		Login username.
+-p pwd		Login password.
+-b board		Imageboard to download from.
+-t tags		Tagged images to download.
+-P pages		How many pages to download.""" % sys.argv[0]
 
 
 opener = urllib2.build_opener(urllib2.HTTPCookieProcessor())
@@ -215,19 +213,24 @@ def MyParser(url):
 # Locally stored configuration settings
 class Settings:
     def __init__(self):
-        self.file = os.path.join(configpath, 'settings.conf')
+        self.path = os.path.join(os.path.expanduser("~"), ".waboocenral")
+        self.file = os.path.join(self.path, 'settings.conf')
+        
         try:
             f = open(self.file)
             r = f.read()
         except:
             try:
                 os.mkdir(self.path)
-            except:
-                error('Unable to make configuration directory.')
+            except OSError, e:
+                if errno != 17:
+                    error('Unable to make configuration directory.')
+            
             f = open(self.file, 'wb')
             f.close()
             f = open(self.file)
             r = f.read()
+        
         try:
             self.r = leval(r)
         except:
@@ -645,7 +648,7 @@ class Application(QMainWindow):
     def displayNotification(self, t=str(), m=str(), tm=5000):
         self.trayicon = QSystemTrayIcon(self)
         if self.trayicon.supportsMessages():
-            self.icon = QIcon(os.path.join(configpath, 'favicon.ico'))
+            self.icon = QIcon(os.path.join(Settings.path, 'favicon.ico'))
             self.trayicon.setIcon(self.icon)
             self.trayicon.show()
             self.trayicon.showMessage(t, m, msecs=tm)
@@ -799,7 +802,7 @@ class Application(QMainWindow):
         if Settings.get('general', fallback={'notify' : True})['notify']:
             if sys.platform in ['linux2']:
                 try:
-                    Popen(['notify-send', '--icon=%s' % os.path.join(configpath, 'favicon.ico'), 'Waboocenral has finished downloading.'])
+                    Popen(['notify-send', '--icon=%s' % os.path.join(Settings.path, 'favicon.ico'), 'Waboocenral has finished downloading.'])
                 except:
                     self.displayNotification('Waboocenral', 'Waboocenral has finished downloading.')
             else:
@@ -1081,7 +1084,7 @@ def login(board, username, password):
         f = opener.open(adapt[board]['url'], q).read()
         r = re.search(adapt[board]['regex'], f, 0)
         try:
-            error("%s" % r.group(1) )
+            error("%s" % r.group(1))
             return False
         except:
             return True
@@ -1173,7 +1176,8 @@ def analyze(items):
             verbose("Made directory: %s" % directory)
         except OSError, e:
             if e.errno != 17:
-                error(e); sys.exit(1)
+                error(e)
+                sys.exit(1)
         download(scrap(tags, board, pages))
 
 def main():
@@ -1182,7 +1186,7 @@ def main():
     if len(sys.argv) > 1:
         for i in range(len(sys.argv)):
             if re.search('^--?h(elp)?', sys.argv[i]):
-                print help
+                print usage
                 os.system("pause")
                 sys.exit(0)
             else:
@@ -1194,7 +1198,7 @@ def main():
                         if board in b:
                             board = b
                     if not board in types:
-                        print help
+                        print usage
                         sys.exit(1)
                 if re.search('^--?u(ser(name)?)?', sys.argv[i]):
                     username = sys.argv[i + 1]
@@ -1236,7 +1240,7 @@ def main():
                         if board in b:
                             board = b
                     if not board in types:
-                        print help
+                        print usage
                         sys.exit(1)
                 try:
                     pages
@@ -1256,7 +1260,7 @@ def main():
                     if board in b:
                         board = b
                 if not board in types:
-                    print help
+                    print usage
                     os.system("pause")
                     sys.exit(1)
             try:
