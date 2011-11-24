@@ -1,0 +1,9 @@
+Waboocenral
+Batch weeaboo image downloader
+
+This program is written in Python, and you require the following:
+- Python 2.7
+- PyQt4
+- BeautifulSoup
+
+After that you should be able to execute waboocenral.py and use it.
