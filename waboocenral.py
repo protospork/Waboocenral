@@ -110,18 +110,22 @@ def error(m):
 
 # Parse HTML entities to regular characters
 def parseEntity(s):
-    s = s.replace("&nbsp;", " ")
-    s = s.replace("&lt;", "<")
-    s = s.replace("&gt;", ">")
-    s = s.replace("&#39;", "'")
-    s = s.replace("&quot;", "\"")
-    s = s.replace("&#44;", ",")
-    s = s.replace("&deg;", u"°")
-    s = s.replace("&#33;", "!")
-    s = s.replace("&#8217;", "\'")
-    s = s.replace("&#8216;", u"‘")
-    s = s.replace("&#8230;", u"…")
-    s = s.replace("&amp;", "&")
+    if isinstance(s, unicode):
+        s = s.encode('utf-8')
+    replace = [["&nbsp;", " "],
+              ["&lt;", "<"],
+              ["&gt;", ">"],
+              ["&#39;", "'"],
+              ["&quot;", "\""],
+              ["&#44;", ","],
+              ["&deg;", "°"],
+              ["&#33;", "!"],
+              ["&#8217;", "\'"],
+              ["&#8216;", "‘"],
+              ["&#8230;", "…"],
+              ["&amp;", "&"]]
+    for e in replace:
+        s = s.replace(e[0], e[1])
     s = re.sub('\&\S*?;', '', s, re.I)
     return s
 
@@ -155,7 +159,7 @@ class Thread(QThread):
         return
 
 
-def MyParser(url):
+def MyParser(url, fileNameLength=200):
     """
     Parses a page and returns the image thumbnails and additional information
     if found.
@@ -173,9 +177,11 @@ def MyParser(url):
                 link = attrD['src']
                 fileid = link.split('/')[-1].split('.')[0].replace('thumbnail_', '')
                 info = parseEntity(attrD['title'])
+                
                 if re.search('^/', link):
                     link = main_url + link
-                while len(info) > 200:
+                
+                while len(info) > fileNameLength:
                     temp = info.split(' ')
                     tem = -1
                     while True:
@@ -185,11 +191,33 @@ def MyParser(url):
                             break
                         else:
                             tem -= 1
-                info = re.sub('Rating\:\s?(\w+)', 'Rating:\g<1>', info, re.I)
-                info = re.sub('User\:\s?(\S+)', 'User:\g<1>', info, re.I)
-                info = re.sub('Score\:\s?(\S+)', 'Score:\g<1>', info, re.I)
+                
+                rating = re.search('Rating\:\s?(\w+)', info, re.I)
+                if rating:
+                    rating = "Rating:" + rating.groups(1)[0]
+                else:
+                    rating = ''
+                user = re.search('User\:\s?(\S+)', info, re.I)
+                if user:
+                    user = "User:" + user.groups(1)[0]
+                else:
+                    user = ''
+                score = re.search('Score\:\s?(\S+)', info, re.I)
+                if score:
+                    score = "Score:" + score.groups(1)[0]
+                else:
+                    score = ''
+                
+                info = re.sub('\s?Rating\:\s?(\w+)?\s?', '', info, re.I)
+                info = re.sub('\s?User\:\s?(\S+)?\s?', '', info, re.I)
+                info = re.sub('\s?Score\:\s?(\S+)?\s?', '', info, re.I)
+                info = re.sub('\s?Tags\:\s?(\S+)?\s?', '', info, re.I)
+                
                 image = dict()
                 image['url'] = link
+                image['rating'] = rating
+                image['user'] = user
+                image['score'] = score
                 image['tags'] = info
                 image['id'] = fileid
                 images.append(image)
@@ -198,10 +226,14 @@ def MyParser(url):
                 link = attrD['data-src']
                 fileid = link.split('/')[-1].split('.')[0].replace('_s', '')
                 info = parseEntity(img.findParent("p").findNext("h1").text)
-                if len(info) > 200:
-                    info = info[:200] + '…'
+                if len(info) > fileNameLength:
+                    info = info[:fileNameLength] + '…'
+                
                 image = dict()
                 image['url'] = link
+                image['rating'] = ''
+                image['user'] = ''
+                image['score'] = ''
                 image['tags'] = info
                 image['id'] = fileid
                 images.append(image)
@@ -440,6 +472,10 @@ class Application(QMainWindow):
             sformat = S['format']
         except:
             sformat = '%id% %tags%%page%'
+        try:
+            stagslength = str(S['tagslength'])
+        except:
+            stagslength = "200"
         
         self.settings = {}
         self.settings['general'] = {}
@@ -450,6 +486,8 @@ class Application(QMainWindow):
         self.settings['general']['notify'] = QCheckBox("Notify on finish")
         self.settings['general']['format_input'] = QLineEdit(sformat)
         self.settings['general']['format_input'].setPlaceholderText("Save string formatting")
+        self.settings['general']['tagsLength_input'] = QLineEdit(stagslength)
+        self.settings['general']['tagsLength_input'].setPlaceholderText("Max character length of info")
         
         self.settingsGrid = {}
         self.settingsGrid['general'] = QGridLayout(self.settings['general']['widget'])
@@ -468,7 +506,8 @@ class Application(QMainWindow):
         self.settingsGrid['general'].addWidget(self.settings['general']['img_preview'], 1, 0, 1, 2)
         self.settingsGrid['general'].addWidget(self.settings['general']['notify'], 2, 0, 1, 2)
         self.settingsGrid['general'].addWidget(self.settings['general']['format_input'], 3, 0, 1, 2)
-        self.settingsGrid['general'].addWidget(self.settings['general']['spacer'], 4, 0)
+        self.settingsGrid['general'].addWidget(self.settings['general']['tagsLength_input'], 4, 0, 1, 2)
+        self.settingsGrid['general'].addWidget(self.settings['general']['spacer'], 5, 0)
         
         self.settingsTabs.addTab(self.settings['general']['widget'], 'general')
         
@@ -872,10 +911,12 @@ class Application(QMainWindow):
         preview = self.settings['general']['img_preview'].isChecked()
         notify = self.settings['general']['notify'].isChecked()
         format = unicode(self.settings['general']['format_input'].text())
+        tagslength = int(self.settings['general']['tagsLength_input'].text())
         
         Settings.add('general', {'preview' : preview,
                                  'notify' : notify,
-                                 'format' : format})
+                                 'format' : format,
+                                 'tagslength' : tagslength})
         
         # board settings
         for b in types:
@@ -1014,21 +1055,34 @@ def download(images):
         for ii in range(len(f)):
             if not isinstance(url, list):
                 url = [url]
+            
             meta = f[ii].info()
             ext = re.sub('\?\S+', '', url[ii].split('/')[-1], re.I)
+            
             suffix = str()
+            is_pixiv_page = re.search('(_p\d+)\.\w+$', ext, re.I)
+            if is_pixiv_page:
+                suffix = is_pixiv_page.groups(0)[0]
+            
             format = Settings.get('general', fallback={'format' : '%id% %tags%%page%'})['format']
             format = format.replace('%id%', '%(id)s')
             format = format.replace('%tags%', '%(tags)s')
             format = format.replace('%page%', '%(page)s')
-            is_pixiv_page = re.search('(_p\d+)\.\w+$', ext, re.I)
-            if is_pixiv_page:
-                suffix = is_pixiv_page.groups(0)[0]
+            format = format.replace('%user%', '%(user)s')
+            format = format.replace('%rating%', '%(rating)s')
+            format = format.replace('%score%', '%(score)s')
+            
+            obj = dict()
+            obj['tags'] = images[i]['tags']
+            obj['user'] = images[i]['user']
+            obj['rating'] = images[i]['rating']
+            obj['score'] = images[i]['score']
+            obj['page'] = suffix
+            obj['id'] = images[i]['id']
+            
             ext = ext.split('.')[-1]
             # Sanitize filename in case of illegal characters
-            name = sanitizeFilename(format %{'tags' : images[i]['tags'],
-                                             'page' : suffix,
-                                             'id' : images[i]['id']}) + "." + ext
+            name = sanitizeFilename(format % obj) + "." + ext
             if 'text/html' in meta['Content-Type']:
                 error('Wrong mime-type on image; possible redirect.')
                 continue
@@ -1077,7 +1131,22 @@ def login(board, username, password):
     """
     
     # Login POST request parameters
-    adapt = {'pixiv' : {'params' : {'mode' : 'login', 'pixiv_id' : username, 'pass' : password}, 'url' : 'http://www.pixiv.net/login.php', 'regex' : '<span class=\'error\'>(.*?)<\/span>'}, 'danbooru' : {'params' : {'commit' : 'Login', 'url' : '', 'user[name]' : username, 'user[password]' : password}, 'url' : 'http://danbooru.donmai.us/user/authenticate', 'regex' : '<div id="notice">(.*?)</div>'}, 'gelbooru' : {'params' : {'pass' : password, 'submit' : 'Log in', 'user' : username}, 'url' : 'http://gelbooru.com/index.php?page=account&s=login&code=00', 'regex' : ''}, 'safebooru' : {'params' : {'pass' : password, 'submit' : 'Log in', 'user' : username}, 'url' : 'http://safebooru.org/index.php?page=account&s=login&code=00', 'regex' : ''}, 'konachan' : {'params' : {'username' : username, 'password' : password}, 'url' : 'http://konachan.net/user/check.json', 'regex' : '"response":"(.*?)"'}, 'oreno.imouto' : {'params' : {'username' : username, 'password' : password}, 'url' : 'http://oreno.imouto.org/user/check.json', 'regex' : '"response":"(.*?)"'}, 'sankakucomplex' : {'params' : {'url' : '', 'user%5Bname%5D' : username, 'user%5Bpass%5D' : password, 'commit' : 'Login'}, 'url' : 'http://chan.sankakucomplex.com/user/authenticate', 'regex' : '<div id="notice">(.*?)</div>'} }
+    adapt = {'pixiv' : {'params' : {'mode' : 'login', 'pixiv_id' : username, 'pass' : password},
+                'url' : 'http://www.pixiv.net/login.php',
+                'regex' : '<span class=\'error\'>(.*?)<\/span>'},
+            'danbooru' : {'params' : {'commit' : 'Login', 'url' : '', 'user[name]' : username, 'user[password]' : password},
+                'url' : 'http://danbooru.donmai.us/user/authenticate',
+                'regex' : '<div id="notice">(.*?)</div>'},
+            'gelbooru' : {'params' : {'pass' : password, 'submit' : 'Log in', 'user' : username},
+                'url' : 'http://gelbooru.com/index.php?page=account&s=login&code=00', 'regex' : ''},
+            'safebooru' : {'params' : {'pass' : password, 'submit' : 'Log in', 'user' : username},
+                'url' : 'http://safebooru.org/index.php?page=account&s=login&code=00', 'regex' : ''},
+            'konachan' : {'params' : {'username' : username, 'password' : password},
+                'url' : 'http://konachan.net/user/check.json', 'regex' : '"response":"(.*?)"'},
+            'oreno.imouto' : {'params' : {'username' : username, 'password' : password},
+                'url' : 'http://oreno.imouto.org/user/check.json', 'regex' : '"response":"(.*?)"'},
+            'sankakucomplex' : {'params' : {'url' : '', 'user%5Bname%5D' : username, 'user%5Bpass%5D' : password, 'commit' : 'Login'},
+                'url' : 'http://chan.sankakucomplex.com/user/authenticate', 'regex' : '<div id="notice">(.*?)</div>'}}
     if board in adapt.keys():
         q = urllib.urlencode(adapt[board]['params'])
         f = opener.open(adapt[board]['url'], q).read()
@@ -1100,7 +1169,52 @@ def scrap(tags, board, pages):
     # replace the old adapt with something new, and possibly grab it from a
     # server automatically. BOTNET BOTNET BOTNET!
     # Search URL format and regex to find images thumbnails.
-    adapt = {'danbooru' : {'url' : 'http://danbooru.donmai.us/post/index?tags=%s', 'page' : '&page=', 'mi' : [0, 1], 'findall' : '\/ssd\/data\/preview\/[a-zA-Z0-9-]*?\.jpg', 'sub' : [['ssd\/data\/preview\/', 'data/'], ['^\/', 'http://sonohara.donmai.us/']]}, 'gelbooru' : {'url' : 'http://gelbooru.com/index.php?page=post&s=list&tags=%s', 'page' : '&pid=', 'mi' : [1, 25], 'findall' : '(http:\/\/[a-zA-Z0-9-]*?\.gelbooru\.com\/thumbs\/\d*?\/thumbnail_[a-zA-Z0-9-]*?\.(jpg|jpeg|png|gif))', 'sub' : [['thumbs\/', 'images/'], ['thumbnail_', '']]}, 'pixiv' : {'url' : 'http://www.pixiv.net/search.php?s_mode=s_tag&word=%s', 'page' : '&p=', 'mi' : [0, 1], 'findall' : '(http:\/\/[a-zA-Z0-9-]*?\.pixiv\.net\/img\/[a-zA-Z0-9-_]*?\/[a-zA-Z0-9-]*?_s\.(jpg|jpeg|png|gif))', 'sub' : [['_s\.', '.']]}, 'safebooru' : {'url' : 'http://safebooru.org/index.php?page=post&s=list&tags=%s', 'page' : '&pid=', 'mi' : [1, 25], 'findall' : '(http:\/\/[a-zA-Z0-9-]*?\.booru\.org\/safe\/\d*?\/thumbnail_[a-zA-Z0-9-]*?\.(jpg|jpeg|png|gif))', 'sub' : [['safe\/', 'images/'], ['^http:\/\/[a-zA-Z0-9-]*?\.booru\.', 'http://safebooru.'], ['thumbnail_', '']]}, 'konachan' : {'url' : 'http://konachan.com/post?tags=%s', 'page' : '&page=', 'mi' : [0, 1], 'findall' : '(http://konachan\.com/(jpeg|image)/\S*?\.(png|jpe?g|gif|bmp))', 'sub' : [['data/preview/[a-zA-Z0-9]{1,3}/[a-zA-Z0-9]{1,3}/([a-zA-Z0-9]*?\.(png|jpe?g|gif|bmp))', 'image/\g<1>']]}, 'oreno.imouto' : {'url' : 'http://oreno.imouto.org/post?tags=%s', 'page' : '&page=', 'mi' : [0, 1], 'findall' : '(http://[a-zA-Z0-9]*?\.imouto\.org/data/preview/[a-zA-Z0-9-]{1,3}/[a-zA-Z0-9-]{1,3}/\S*?\.(png|jpe?g|gif|bmp))', 'sub' : [['data/preview/[a-zA-Z0-9]{1,3}/[a-zA-Z0-9]{1,3}/([a-zA-Z0-9]*?\.(png|jpe?g|gif|bmp))', 'image/\g<1>']]}, 'sankakucomplex' : {'url' : 'http://chan.sankakucomplex.com/?tags=%s', 'page' : '&page=', 'mi' : [0, 1], 'findall' : '(http://[a-zA-Z0-9]{1,3}\.sankakustatic\.com/data/preview/[a-zA-Z0-9]{1,3}/[a-zA-Z0-9]{1,3}/\S*?\.(png|jpe?g|gif))', 'sub' : [['http://[a-zA-Z0-9]{1,3}\.', 'http://chan.'], ['preview/', '']]}, 'e-shuushuu' : {'url' : 'http://e-shuushuu.net/search/process/?source=%%22%s%%22', 'page' : '&page=', 'mi' : [0, 1], 'findall' : '', 'sub' : [[]]} }
+    adapt = {
+        'danbooru' : {
+            'url' : 'http://danbooru.donmai.us/post/index?tags=%s',
+            'page' : '&page=',
+            'mi' : [0, 1],
+            'findall' : '\/ssd\/data\/preview\/[a-zA-Z0-9-]*?\.jpg',
+            'sub' : [['ssd\/data\/preview\/', 'data/'], ['^\/', 'http://sonohara.donmai.us/']]},
+        'gelbooru' : {
+            'url' : 'http://gelbooru.com/index.php?page=post&s=list&tags=%s',
+            'page' : '&pid=',
+            'mi' : [1, 25],
+            'findall' : '(http:\/\/[a-zA-Z0-9-]*?\.gelbooru\.com\/thumbs\/\d*?\/thumbnail_[a-zA-Z0-9-]*?\.(jpg|jpeg|png|gif))',
+            'sub' : [['thumbs\/', 'images/'], ['thumbnail_', '']]},
+        'pixiv' : {
+            'url' : 'http://www.pixiv.net/search.php?s_mode=s_tag&word=%s',
+            'page' : '&p=',
+            'mi' : [0, 1],
+            'findall' : '(http:\/\/[a-zA-Z0-9-]*?\.pixiv\.net\/img\/[a-zA-Z0-9-_]*?\/[a-zA-Z0-9-]*?_s\.(jpg|jpeg|png|gif))',
+            'sub' : [['_s\.', '.']]},
+        'safebooru' : {
+            'url' : 'http://safebooru.org/index.php?page=post&s=list&tags=%s',
+            'page' : '&pid=',
+            'mi' : [1, 25],
+            'findall' : '(http:\/\/[a-zA-Z0-9-]*?\.booru\.org\/safe\/\d*?\/thumbnail_[a-zA-Z0-9-]*?\.(jpg|jpeg|png|gif))',
+            'sub' : [['safe\/', 'images/'], ['^http:\/\/[a-zA-Z0-9-]*?\.booru\.', 'http://safebooru.'], ['thumbnail_', '']]},
+        'konachan' : {
+            'url' : 'http://konachan.com/post?tags=%s',
+            'page' : '&page=',
+            'mi' : [0, 1],
+            'findall' : '(http://konachan\.com/(jpeg|image)/\S*?\.(png|jpe?g|gif|bmp))', 'sub' : [['data/preview/[a-zA-Z0-9]{1,3}/[a-zA-Z0-9]{1,3}/([a-zA-Z0-9]*?\.(png|jpe?g|gif|bmp))', 'image/\g<1>']]},
+        'oreno.imouto' : {
+            'url' : 'http://oreno.imouto.org/post?tags=%s',
+            'page' : '&page=',
+            'mi' : [0, 1],
+            'findall' : '(http://[a-zA-Z0-9]*?\.imouto\.org/data/preview/[a-zA-Z0-9-]{1,3}/[a-zA-Z0-9-]{1,3}/\S*?\.(png|jpe?g|gif|bmp))', 'sub' : [['data/preview/[a-zA-Z0-9]{1,3}/[a-zA-Z0-9]{1,3}/([a-zA-Z0-9]*?\.(png|jpe?g|gif|bmp))', 'image/\g<1>']]},
+        'sankakucomplex' : {
+            'url' : 'http://chan.sankakucomplex.com/?tags=%s',
+            'page' : '&page=', 'mi' : [0, 1],
+            'findall' : '(http://[a-zA-Z0-9]{1,3}\.sankakustatic\.com/data/preview/[a-zA-Z0-9]{1,3}/[a-zA-Z0-9]{1,3}/\S*?\.(png|jpe?g|gif))', 'sub' : [['http://[a-zA-Z0-9]{1,3}\.', 'http://chan.'], ['preview/', '']]},
+        'e-shuushuu' : {
+            'url' : 'http://e-shuushuu.net/search/process/?source=%%22%s%%22',
+            'page' : '&page=',
+            'mi' : [0, 1],
+            'findall' : '',
+            'sub' : [[]]}
+    }
 
     url = adapt[board]['url'] % urllib.quote_plus(tags)
     verbose("URL: %s" % url)
@@ -1117,7 +1231,10 @@ def scrap(tags, board, pages):
     
     for i in range(ps, pe + 1):
         pn = str((i - adapt[board]['mi'][0]) * adapt[board]['mi'][1])
-        pageimages = MyParser(url + adapt[board]['page'] + pn)
+        
+        pageurl = url + adapt[board]['page'] + pn
+        tagslength = Settings.get("general", fallback={"tagslength" : 200})["tagslength"]
+        pageimages = MyParser(pageurl, tagslength)
         
         # No more images found, stop parsing pages
         #
