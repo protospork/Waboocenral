@@ -41,8 +41,8 @@ from BeautifulSoup import BeautifulSoup
 from subprocess import Popen
 from getpass import getpass
 from ast import literal_eval as leval
-from PyQt4.QtGui import *
-from PyQt4.QtCore import *
+from PySide.QtGui import *
+from PySide.QtCore import *
 
 
 __version__ = 0.7
@@ -406,7 +406,7 @@ class Application(QMainWindow):
         
         self.mainGrid = QGridLayout(self.mainWidget)
         self.mainGrid.setSpacing(10)
-        self.pass_input.setEchoMode(2)
+        self.pass_input.setEchoMode(QLineEdit.Password)
         self.cancel_button.setEnabled(False)
         self.file_name.setMinimumWidth(300)
         self.file_name.setMaximumWidth(300)
@@ -539,7 +539,7 @@ class Application(QMainWindow):
             
             self.settingsGrid[b] = QGridLayout(self.settings[b]['widget'])
             self.settingsGrid[b].setSpacing(10)
-            self.settings[b]['pword_input'].setEchoMode(2)
+            self.settings[b]['pword_input'].setEchoMode(QLineEdit.Password)
             
             self.connect(self.settings[b]['uname_input'],
                          SIGNAL('textChanged(QString)'), self.settingsEnableApply)
