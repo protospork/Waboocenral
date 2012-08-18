@@ -59,7 +59,7 @@ app = None
 DThread = None
 path = os.path.join(os.path.expanduser("~"), "python-downloads")
 types = ["danbooru", "pixiv", "gelbooru", "safebooru", "konachan",
-         "oreno.imouto", "sankakucomplex"]
+         "oreno.imouto", "sankakucomplex", "idolcomplex"]
 
 help = """Tags: Type up to however many tags the image host supports; \
 for example basic Danbooru searches only allow two tags.
@@ -1145,6 +1145,8 @@ def login(board, username, password):
                 'url' : 'http://konachan.net/user/check.json', 'regex' : '"response":"(.*?)"'},
             'oreno.imouto' : {'params' : {'username' : username, 'password' : password},
                 'url' : 'http://oreno.imouto.org/user/check.json', 'regex' : '"response":"(.*?)"'},
+            'idolcomplex' : {'params' : {'url' : '', 'user%5Bname%5D' : username, 'user%5Bpass%5D' : password, 'commit' : 'Login'},
+                'url' : 'http://idol.sankakucomplex.com/user/authenticate', 'regex' : '<div id="notice">(.*?)</div>'},
             'sankakucomplex' : {'params' : {'url' : '', 'user%5Bname%5D' : username, 'user%5Bpass%5D' : password, 'commit' : 'Login'},
                 'url' : 'http://chan.sankakucomplex.com/user/authenticate', 'regex' : '<div id="notice">(.*?)</div>'}}
     if board in adapt.keys():
@@ -1206,8 +1208,14 @@ def scrap(tags, board, pages):
             'findall' : '(http://[a-zA-Z0-9]*?\.imouto\.org/data/preview/[a-zA-Z0-9-]{1,3}/[a-zA-Z0-9-]{1,3}/\S*?\.(png|jpe?g|gif|bmp))', 'sub' : [['data/preview/[a-zA-Z0-9]{1,3}/[a-zA-Z0-9]{1,3}/([a-zA-Z0-9]*?\.(png|jpe?g|gif|bmp))', 'image/\g<1>']]},
         'sankakucomplex' : {
             'url' : 'http://chan.sankakucomplex.com/?tags=%s',
-            'page' : '&page=', 'mi' : [0, 1],
+            'page' : '&page=',
+			'mi' : [0, 1],
             'findall' : '(http://[a-zA-Z0-9]{1,3}\.sankakustatic\.com/data/preview/[a-zA-Z0-9]{1,3}/[a-zA-Z0-9]{1,3}/\S*?\.(png|jpe?g|gif))', 'sub' : [['http://[a-zA-Z0-9]{1,3}\.', 'http://chan.'], ['preview/', '']]},
+        'idolcomplex' : {
+            'url' : 'http://idol.sankakucomplex.com/?tags=%s',
+            'page' : '&page=',
+			'mi' : [0, 1],
+            'findall' : '(http://[a-zA-Z0-9]{1,3}\.sankakustatic\.com/data/preview/[a-zA-Z0-9]{1,3}/[a-zA-Z0-9]{1,3}/\S*?\.(png|jpe?g|gif))', 'sub' : [['http://[a-zA-Z0-9]{1,3}\.', 'http://idol.'], ['preview/', '']]},
         'e-shuushuu' : {
             'url' : 'http://e-shuushuu.net/search/process/?source=%%22%s%%22',
             'page' : '&page=',
